@@ -5,15 +5,15 @@ services:
     container_name: postgres
     env_file: .env
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
+      POSTGRES_USER: ${POSTGRES_CONN_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_CONN_PASSWORD}
+      POSTGRES_DB: ${METADATA_DATABASE_NAME}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_CONN_USERNAME}"]
       interval: 10s
       retries: 5
       start_period: 10s
@@ -53,11 +53,29 @@ services:
     env_file: .env
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${METADATA_DATABASE_USERNAME}:${METADATA_DATABASE_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${METADATA_DATABASE_NAME}
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://${CELERY_BACKEND_USERNAME}:${CELERY_BACKEND_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${CELERY_BACKEND_NAME}
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
       _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-postgres psycopg2-binary
-    command: bash -c "airflow db migrate && airflow users create --username airflow --password airflow --firstname Admin --lastname Admin --role Admin --email admin@airflow.com"
+    command: >
+      bash -c "
+        airflow db migrate &&
+        airflow users create
+          --username ${AIRFLOW_WWW_USER_USERNAME}
+          --password ${AIRFLOW_WWW_USER_PASSWORD}
+          --firstname Admin
+          --lastname Admin
+          --role Admin
+          --email admin@airflow.com &&
+        airflow connections add 'postgres_db_yt_elt'
+          --conn-type postgres
+          --conn-host ${POSTGRES_CONN_HOST}
+          --conn-login ${ELT_DATABASE_USERNAME}
+          --conn-password ${ELT_DATABASE_PASSWORD}
+          --conn-port ${POSTGRES_CONN_PORT}
+          --conn-schema ${ELT_DATABASE_NAME}
+      "
     restart: on-failure
 
   airflow-webserver:
@@ -70,10 +88,12 @@ services:
       - "8080:8080"
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${METADATA_DATABASE_USERNAME}:${METADATA_DATABASE_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${METADATA_DATABASE_NAME}
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://${CELERY_BACKEND_USERNAME}:${CELERY_BACKEND_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${CELERY_BACKEND_NAME}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW_CONN_POSTGRES_DB_YT_ELT: postgresql://${ELT_DATABASE_USERNAME}:${ELT_DATABASE_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${ELT_DATABASE_NAME}
       _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-postgres psycopg2-binary
     volumes:
       - ./dags:/opt/airflow/dags
@@ -90,10 +110,12 @@ services:
     env_file: .env
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${METADATA_DATABASE_USERNAME}:${METADATA_DATABASE_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${METADATA_DATABASE_NAME}
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://${CELERY_BACKEND_USERNAME}:${CELERY_BACKEND_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${CELERY_BACKEND_NAME}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW_CONN_POSTGRES_DB_YT_ELT: postgresql://${ELT_DATABASE_USERNAME}:${ELT_DATABASE_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${ELT_DATABASE_NAME}
       _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-postgres psycopg2-binary
     volumes:
       - ./dags:/opt/airflow/dags
@@ -102,7 +124,6 @@ services:
     command: scheduler
     restart: unless-stopped
 
-  # ✅ WORKER CELERY — manquait dans ton fichier !
   airflow-worker:
     image: apache/airflow:2.9.2
     container_name: airflow-worker
@@ -111,10 +132,12 @@ services:
     env_file: .env
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${METADATA_DATABASE_USERNAME}:${METADATA_DATABASE_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${METADATA_DATABASE_NAME}
       AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://${CELERY_BACKEND_USERNAME}:${CELERY_BACKEND_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${CELERY_BACKEND_NAME}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+      AIRFLOW_CONN_POSTGRES_DB_YT_ELT: postgresql://${ELT_DATABASE_USERNAME}:${ELT_DATABASE_PASSWORD}@${POSTGRES_CONN_HOST}:${POSTGRES_CONN_PORT}/${ELT_DATABASE_NAME}
       _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-postgres psycopg2-binary
     volumes:
       - ./dags:/opt/airflow/dags
